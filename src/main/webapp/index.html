@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tic-Tac-Toe</title>
+    <!-- For server draw -->
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+</head>
+<body>
+
+<div id="content" class="section"></div>
+
+<div>
+    <h3 id="computer_draw"></h3>
+    <p id="statistics"/>
+</div>
+
+<dialog id="resultDialog">
+    <p>Hi, I'm a dialog!</p>
+    <button id="restart_button" onclick="restartGame()">Restart</button>
+</dialog>
+
+<dialog id="turnDialog">
+
+</dialog>
+
+<script>
+
+    /* Number of rows */
+    var m = 3;
+    /* Number of columns */
+    var n = 3;
+    /* Number of consecutive places for win */
+    var k = 3;
+
+    var COMPUTER = 0;
+    var computerMark;
+    var turn;
+    var HUMAN = 1;
+    var humanMark;
+    var matrix = createMxNArray(m, n);
+    var gameOver = false;
+
+    /* Statuses for the game */
+    var STATUS_IN_PROGRESS = "IN_PROGRESS";
+    var STATUS_WON = "WON";
+    var STATUS_LOST = "LOST";
+    var STATUS_DRAW = "DRAW";
+
+    /* Size of each canvas box */
+    var sizeOfBox = 80;
+    /* Statistics Keys*/
+    var KEY_MATCHES_TOTAL = "total";
+    var KEY_MATCHES_WON = "won";
+    var KEY_MATCHES_LOST = "lost";
+    var KEY_MATCHES_DRAW = "draw";
+    var SERVER_URL = "http://default-environment-de4ppcvfn4.elasticbeanstalk.com/webapi/services/game";
+    //var SERVER_URL = "http://localhost:8080/game-service/webapi/services/game";
+
+    drawBoard(m, n, k);
+    startGame();
+
+    /**
+     * Returns array of borders which needs to be drawn for each box on the board
+     */
+    function getBorder(index, m, n) {
+
+        //top-left
+        if (index === 0) {
+            return ["right", "bottom"];
+        }
+        //top-right
+        else if (index === (m - 1)) {
+            return ["left", "bottom"];
+        }
+        //bottom-left
+        else if (index === (m * (n - 1))) {
+            return ["right", "top"];
+        }
+        //bottom-right
+        else if (index === ((m * n) - 1)) {
+            return ["left", "top"];
+        }
+        //top-row-middle
+        else if (index > 0 && index < (m - 1)) {
+            return ["right", "bottom"];
+        }
+        //left-side-middle
+        else if (index % m === 0) {
+            return ["right", "bottom"];
+        }
+        //bottom-side-middle
+        else if (index > m * (n - 1)) {
+            return ["left", "top"];
+        }
+        //right-side-middle
+        else if ((index + 1) % m === 0) {
+            return ["left", "bottom"];
+        }
+        //all middle elements
+        else {
+            return ["left", "top"];
+        }
+    }
+
+    /**
+     * Creates the canvas tag for the given box
+     * */
+    function getCanvas(left, top, index, m, n) {
+        var canvas = document.createElement("canvas");
+        canvas.setAttribute("id", "canvas" + index);
+        canvas.setAttribute("x", getXY(index, m, n)[0]);
+        canvas.setAttribute("y", getXY(index, m, n)[1]);
+        canvas.setAttribute("tag", index);
+        canvas.setAttribute("width", sizeOfBox);
+        canvas.setAttribute("height", sizeOfBox);
+        var borders = getBorder(index, m, n);
+        var borderCss = "";
+        for (var i in borders) {
+            borderCss = borderCss + ("border-" + borders[i] + ": 2px  solid blue; ");
+        }
+        canvas.style.cssText = borderCss + " z-index: 1;" +
+                " position: absolute; " +
+                "left: " + left + "px; " +
+                "top: " + top + "px";
+
+        canvas.onclick = function () {
+            if (turn === HUMAN) {
+                var x = canvas.getAttribute("x");
+                var y = canvas.getAttribute("y");
+                if (matrix[x][y] !== "-") {
+                    return;
+                }
+                if (humanMark === "X") {
+                    drawX(canvas);
+                } else {
+                    drawCircle(canvas);
+                }
+                humanEntry(x, y, humanMark);
+            }
+        };
+        return canvas;
+    }
+
+    /**
+     * Gets the canvas object by its co-ordinates. Returns null if not found
+     *
+     */
+    function getCanvasesByXY(x, y) {
+        var allCanvases = document.getElementsByTagName("canvas");
+        for (var i = 0; i < allCanvases.length; i++)
+            if (allCanvases[i].getAttribute("x") == x && allCanvases[i].getAttribute("y") == y)
+                return (allCanvases[i]);
+        return null;
+    }
+
+    /**
+     * Returns the pair of x & y co-ordinates for the given index on m X n board
+     */
+    function getXY(index, m, n) {
+        return [Math.floor(index / m), index % n]
+    }
+
+    /**
+     * Draws the circle on given canvas object
+     */
+    function drawCircle(canvas) {
+        var context = canvas.getContext("2d");
+        context.beginPath();
+        context.strokeStyle = '#ff00ff';
+        context.lineWidth = 10;
+        context.arc(sizeOfBox / 2, sizeOfBox / 2, (sizeOfBox / 2) - sizeOfBox / 10, 0, 2 * Math.PI);
+        context.stroke();
+    }
+
+    /**
+     * Draws a cross on the given canvas object
+     */
+    function drawX(canvas) {
+        var context = canvas.getContext("2d");
+        context.beginPath();
+        context.strokeStyle = '#ff00ff';
+        context.lineWidth = 10;
+        context.moveTo(sizeOfBox / 20, sizeOfBox / 20);
+        context.lineTo(sizeOfBox - (sizeOfBox / 20), sizeOfBox - (sizeOfBox / 20));
+        context.stroke();
+        context.moveTo(sizeOfBox / 20, sizeOfBox - (sizeOfBox / 20));
+        context.lineTo(sizeOfBox - (sizeOfBox / 20), sizeOfBox / 20);
+        context.stroke();
+    }
+
+    /**
+     * Draws the m X n board
+     */
+    function drawBoard(m, n, k) {
+        var x = 0;
+        var y = sizeOfBox / 2;
+        var len = sizeOfBox;
+        var index = 0;
+        for (var i = 0; i < n; i++) {
+            for (var j = 0; j < m; j++) {
+                if (j % m === 0) {
+                    y = y + len;
+                    x = len;
+                } else {
+                    x = x + len
+                }
+                var canvasItem = getCanvas(x, y, index++, m, n);
+                document.getElementById("content").appendChild(canvasItem);
+            }
+        }
+    }
+
+    /**
+     * Returns a random number 0 or 1 to randomly decide who should start the play
+     */
+    function whoFirst() {
+        return Math.floor(Math.random() * 2);
+    }
+
+    /**
+     * Checks the status of the board whether game is still in progress,
+     * someone won, lost or if it's draw
+     */
+    function checkBoardStatus() {
+
+        var status = checkDiagonal();
+        if (status !== STATUS_IN_PROGRESS && status!==undefined) {
+            return status;
+        }
+
+        status = checkHorizontalLine();
+        if (status !== STATUS_IN_PROGRESS) {
+            return status;
+        }
+
+        status = checkVerticalLine();
+        if (status !== STATUS_IN_PROGRESS) {
+            return status;
+        }
+
+
+        if(checkFull() && status === STATUS_IN_PROGRESS){
+            return STATUS_DRAW;
+        }
+
+    }
+
+    /**
+     * Returns true if the board is full, otherwise false
+     */
+    function checkFull() {
+        for (var i = 0; i < n; i++) {
+            for (var j = 0; j < m; j++) {
+                if (matrix[i][j] === "-") {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Draws a horizontal line on the canvas boxes specified in "line" array
+     */
+    function drawHorizontalCompleteLine(line){
+        for(var i = 0; i<k;i++){
+            var canvas = getCanvasesByXY(line[i][0],line[i][1]);
+            var context = canvas.getContext("2d");
+            context.beginPath();
+            context.strokeStyle = '#000000';
+            context.lineWidth = 2;
+            context.moveTo(0, sizeOfBox / 2);
+            context.lineTo(sizeOfBox, sizeOfBox / 2);
+            context.stroke();
+            context.closePath();
+        }
+    }
+
+
+    /**
+     * Draws a vertical line on the canvas boxes specified in "line" array
+     */
+    function drawVerticalCompleteLine(line){
+        for(var i = 0; i<k;i++){
+            var canvas = getCanvasesByXY(line[i][0],line[i][1]);
+            var context = canvas.getContext("2d");
+            context.beginPath();
+            context.strokeStyle = '#000000';
+            context.lineWidth = 2;
+            context.moveTo(sizeOfBox / 2,0);
+            context.lineTo(sizeOfBox /2 , sizeOfBox);
+            context.stroke();
+            context.closePath();
+        }
+    }
+
+
+    /**
+     * Draws a diagonal line on the canvas boxes specified in "line" array
+     */
+    function drawDiagonalCompleteLine(line){
+        for(var i = 0; i<k;i++){
+            var canvas = getCanvasesByXY(line[i][0],line[i][1]);
+            var context = canvas.getContext("2d");
+            context.beginPath();
+            context.strokeStyle = '#000000';
+            context.lineWidth = 2;
+            context.moveTo(0,0);
+            context.lineTo(sizeOfBox , sizeOfBox);
+            context.stroke();
+        }
+    }
+
+    /**
+     * Draws a anti-diagonal line on the canvas boxes specified in "line" array
+     */
+    function drawAntiDiagonalCompleteLine(line){
+        for(var i = 0; i<k;i++){
+            var canvas = getCanvasesByXY(line[i][0],line[i][1]);
+            var context = canvas.getContext("2d");
+            context.beginPath();
+            context.strokeStyle = '#000000';
+            context.lineWidth = 2;
+            context.moveTo(0,sizeOfBox);
+            context.lineTo(sizeOfBox , 0);
+            context.stroke();
+        }
+    }
+
+    /**
+     * Checks the each horizontal line of board to see if someone has won or lost or if the game is still in progress
+     */
+    function checkHorizontalLine() {
+        // for each line
+        var counter = 0;
+        for (var i = 0; i < n; i++) {
+            counter = 0;
+            var line = new Array();
+            for (var j = 0; j < m; j++) {
+                var placedMark = matrix[i][j];
+                if (placedMark === humanMark && counter >= 0) {
+                    counter++;
+                    line.push([i,j]);
+                    if (counter === k) {
+                        drawHorizontalCompleteLine(line);
+                        console.log("Horizontal line won. ");
+                        return STATUS_WON;
+                    }
+                }
+                if ((placedMark === humanMark || placedMark === "-") && counter < 0) {
+                    line= [];
+                    counter = 0;
+                }
+                if (placedMark === computerMark && counter <= 0) {
+                    counter--;
+                    line.push([i,j]);
+                    if (counter === -k) {
+                        drawHorizontalCompleteLine(line);
+                        console.log("Horizontal line lost. ");
+                        return STATUS_LOST;
+                    }
+                }
+                if ((placedMark === computerMark || placedMark === "-") && counter > 0) {
+                    counter = 0;
+                    line = [];
+                }
+            }
+        }
+        return STATUS_IN_PROGRESS;
+    }
+
+
+    /**
+     * Checks the each vertical line of board to see if someone has won or lost or if the game is still in progress
+     */
+    function checkVerticalLine() {
+        //check vertically
+        for (var i = 0; i < m; i++) {
+            counter = 0;
+            var line = new Array();
+            for (var j = 0; j < n; j++) {
+                var placedMark = matrix[j][i];
+                if (placedMark === humanMark && counter >= 0) {
+                    counter++;
+                    line.push([j,i]);
+                    if (counter === k)
+                    {
+                        drawVerticalCompleteLine(line);
+                        console.log("Vertical line won. ");
+                        return STATUS_WON;
+                    }
+                }
+                if ((placedMark === humanMark || placedMark === "-") && counter < 0) {
+                    counter = 0;
+                    line = [];
+                }
+                if (placedMark === computerMark && counter <= 0) {
+                    counter--;
+                    line.push([j,i]);
+                    if (counter === -k) {
+                        drawVerticalCompleteLine(line);
+                        console.log("Vertical line lost. ");
+                        return STATUS_LOST;
+                    }
+                }
+                if ((placedMark === computerMark || placedMark === "-" ) && counter > 0) {
+                    counter = 0;
+                    line = [];
+                }
+            }
+        }
+        return STATUS_IN_PROGRESS;
+    }
+
+
+    /**
+     * Checks the each digonal line of board to see if someone has won or lost or if the game is still in progress
+     */
+    function checkDiagonal() {
+        var diagonalSlices = new Array();
+        var str;
+        for (var slice = 0; slice < m + n - 1; ++slice) {
+            str = "slice " + slice + " : ";
+            var sliceItem = new Array();
+            var z1 = slice < m ? 0 : slice - m + 1;
+            var z2 = slice < n ? 0 : slice - n + 1;
+            var line = [];
+            for (var j = slice - z2; j >= z1; --j) {
+                line.push([n - j - 1,slice-j]);
+                sliceItem.push(matrix[n - j - 1][slice - j]);
+                str += matrix[n - j - 1][slice - j];
+            }
+            var status = checkDiagonalSlice(sliceItem,line, "diagonal");
+            console.log(str + "  Result of diagonal = " + status);
+            if (status !== STATUS_IN_PROGRESS) {
+                return status;
+            }
+            diagonalSlices.push(sliceItem);
+            console.log(str);
+        }
+
+        var antiDiagonalSlices = new Array();
+        for (var slice = 0; slice < m + n - 1; ++slice) {
+            str = "slice " + slice + " : ";
+            var sliceItem = new Array();
+            var z1 = slice < m ? 0 : slice - m + 1;
+            var z2 = slice < n ? 0 : slice - n + 1;
+            var line = [];
+            for (var j = slice - z2; j >= z1; --j) {
+                str += matrix[j][slice - j];
+                sliceItem.push(matrix[j][slice - j]);
+                line.push([j,slice-j]);
+            }
+            var status = checkDiagonalSlice(sliceItem, line, "antidiagonal");
+            console.log(str + "  Result of diagonal = " + status);
+            if (status !== STATUS_IN_PROGRESS) {
+                return status;
+            }
+            antiDiagonalSlices.push(sliceItem);
+            console.log(str + "  Result of diagonal = " + status);
+        }
+    }
+
+
+    /**
+     * Checks the diagonal slice to see if someone has won or lost or if the game is still in progress
+     */
+    function checkDiagonalSlice(slice,line, direction) {
+        var len = slice.length;
+        if (len < k)
+            return STATUS_IN_PROGRESS;
+        //check vertically
+        var counter = 0;
+        for (var i = 0; i < len; i++) {
+            var placedMark = slice[i];
+            if (placedMark === humanMark && counter >= 0) {
+                counter++;
+                if (counter === k) {
+                    drawDiagonalLine(direction, line);
+                    return STATUS_WON;
+                }
+            }
+            if ((placedMark === humanMark || placedMark === "-" ) && counter < 0) {
+                counter = 0;
+            }
+            if (placedMark === computerMark && counter <= 0) {
+                counter--;
+                if (counter === -k) {
+                    drawDiagonalLine(direction, line);
+                    return STATUS_LOST;
+                }
+            }
+            if ((placedMark === computerMark || placedMark === "-" ) && counter > 0) {
+                counter = 0;
+            }
+        }
+        return STATUS_IN_PROGRESS;
+    }
+
+    /**
+     * Draws the diagonal complete line in the given direction
+     */
+    function drawDiagonalLine(direction,line){
+        if(direction==="diagonal")
+            drawDiagonalCompleteLine(line);
+        if(direction==="antidiagonal")
+            drawAntiDiagonalCompleteLine(line);
+    }
+
+    /**
+     * Restarts the game by clearing board and matrix
+     */
+    function restartGame() {
+        document.getElementById("resultDialog").close();
+        gameOver = false;
+        clearMatrix();
+        clearBoard();
+        startGame();
+    }
+
+    /**
+     * Clears the board
+     */
+    function clearBoard() {
+        var allCanvases = document.getElementsByTagName("canvas");
+        for (var i = 0; i < allCanvases.length; i++)
+            allCanvases[i].getContext("2d").clearRect(0, 0, allCanvases[i].width, allCanvases[i].height);
+    }
+
+    /**
+     *  Clears and resets the matrix
+     */
+    function clearMatrix() {
+        matrix = createMxNArray(m, n);
+    }
+
+    /**
+     * Evaluates the status of the game
+     */
+    function evaluateStatus(status, mark) {
+        var dialog = document.getElementById("resultDialog");
+        switch (status) {
+            case STATUS_WON:
+                gameOver = true;
+                clearTimeout(timeout);
+                if (sessionStorage.getItem(KEY_MATCHES_TOTAL) === null) {
+                    sessionStorage.setItem(KEY_MATCHES_TOTAL, 1);
+                    sessionStorage.setItem(KEY_MATCHES_WON, 1);
+                } else {
+                    var lastCount = sessionStorage.getItem(KEY_MATCHES_TOTAL);
+                    sessionStorage.setItem(KEY_MATCHES_TOTAL, ++lastCount);
+                    lastCount = sessionStorage.getItem(KEY_MATCHES_WON);
+                    sessionStorage.setItem(KEY_MATCHES_WON, ++lastCount);
+                }
+                if (mark === humanMark) {
+                    dialog.firstElementChild.innerHTML = "Congratulations...You won :) !!! "
+                } else {
+                    dialog.firstElementChild.innerHTML = "You Lost :( !!! "
+                }
+                dialog.showModal();
+                break;
+            case STATUS_IN_PROGRESS:
+                console.log("Game continues");
+                break;
+            case STATUS_DRAW:
+                gameOver = true;
+                clearTimeout(timeout);
+                if (sessionStorage.getItem(KEY_MATCHES_TOTAL) === null) {
+                    sessionStorage.setItem(KEY_MATCHES_TOTAL, 1);
+                    sessionStorage.setItem(KEY_MATCHES_DRAW, 1);
+                } else {
+                    var lastCount = sessionStorage.getItem(KEY_MATCHES_TOTAL);
+                    sessionStorage.setItem(KEY_MATCHES_TOTAL, ++lastCount);
+                    lastCount = sessionStorage.getItem(KEY_MATCHES_DRAW);
+                    sessionStorage.setItem(KEY_MATCHES_DRAW, ++lastCount);
+                }
+                dialog.firstElementChild.innerHTML = "Draw !!! "
+                dialog.showModal();
+                break;
+            case STATUS_LOST:
+                gameOver = true;
+                clearTimeout(timeout);
+                if (sessionStorage.getItem(KEY_MATCHES_TOTAL) === null) {
+                    sessionStorage.setItem(KEY_MATCHES_TOTAL, 1);
+                    sessionStorage.setItem(KEY_MATCHES_WON, 1);
+                } else {
+                    var lastCount = sessionStorage.getItem(KEY_MATCHES_TOTAL);
+                    sessionStorage.setItem(KEY_MATCHES_TOTAL, ++lastCount);
+                    lastCount = sessionStorage.getItem(KEY_MATCHES_LOST);
+                    sessionStorage.setItem(KEY_MATCHES_LOST, ++lastCount);
+                }
+                dialog.firstElementChild.innerHTML = "You Lost :( !!! "
+                dialog.showModal();
+                break;
+        }
+    }
+
+    /**
+     * checks if the element in the matrix is empty (Not used when server computer draw is used)
+     */
+    function isEmpty(x, y) {
+        if (matrix[x][y] === "-") {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Adds the entry in the matrix
+     */
+    function enterEntry(xEntry, yEntry, mark) {
+        matrix[xEntry][yEntry] = mark;
+        printMatrix(matrix, m, n);
+        //var status = checkStatus(mark);
+        var status = checkBoardStatus();
+        evaluateStatus(status, mark);
+        console.log(matrix);
+    }
+
+    /**
+     * Makes a computer entry
+     */
+    function computerEntry(mark) {
+        var data = {
+            "m" : m,
+            "n" : n,
+            "array": matrix
+        }
+        $.ajax({
+            type: "POST",
+            dataType : "json",
+            contentType: "application/json",
+            data: JSON.stringify(data),
+            url: SERVER_URL,
+            complete:  function(data,textStatus,jqXHR) {
+
+                var xEntry;
+                var yEntry
+                if(data.status===200){
+                    document.getElementById("computer_draw").innerHTML = "Computer Draw is calculated on Server."
+                    console.log($.parseJSON(data.responseText));
+                    var serverData= $.parseJSON(data.responseText);
+                    xEntry = serverData.x;
+                    yEntry =  serverData.y;
+                } else{
+                    while (true) {
+                        xEntry = Math.floor((Math.random() * m) * 1);
+                        yEntry = Math.floor((Math.random() * n) * 1);
+                        if (isEmpty(xEntry, yEntry)) {
+                            document.getElementById("computer_draw").innerHTML = "Computer Draw is calculated locally."
+                            break;
+                        }
+                    }
+                }
+
+
+                var canvas = getCanvasesByXY(xEntry, yEntry);
+                if (mark === "X") {
+                    drawX(canvas);
+                } else {
+                    drawCircle(canvas);
+                }
+                enterEntry(xEntry, yEntry, mark);
+
+            }
+        });
+       /*
+        //This code would be used for local computer draw
+        while (true) {
+            var xEntry = Math.floor((Math.random() * m) * 1);
+            var yEntry = Math.floor((Math.random() * n) * 1);
+            if (isEmpty(xEntry, yEntry)) {
+                enterEntry(xEntry, yEntry, mark)
+                var canvas = getCanvasesByXY(xEntry, yEntry);
+                if (mark === "X") {
+                    drawX(canvas);
+                } else {
+                    drawCircle(canvas);
+                }
+                break;
+            }
+        }*/
+        turn = HUMAN;
+    }
+
+    /**
+     * Makes the human entry
+     */
+    function humanEntry(xcoord, ycoord, mark) {
+        enterEntry(xcoord, ycoord, mark);
+        turn = COMPUTER;
+        /*if (gameOver !== true) {
+            computerEntry(computerMark)
+        }*/
+        timeout = setTimeout(function () {
+            if (gameOver !== true) {
+                computerEntry(computerMark)
+            }
+        }, 500);
+    }
+
+    /**
+     * Creates & returns m X n  matrix
+     */
+    function createMxNArray(m, n) {
+        var table = new Array();
+        for (var i = 0; i < n; i++) {
+            var innerTable = new Array();
+            for (var j = 0; j < m; j++) {
+                //"("+ i+"," + j+")"
+                innerTable.push("-");
+            }
+            table.push(innerTable);
+        }
+        return table;
+    }
+
+    /**
+     * Prints m X n matrix on the console (For testing)
+     */
+    function printMatrix(matrix, m, n) {
+        for (var i = 0; i < n; i++) {
+            var str = "";
+            for (var j = 0; j < m; j++) {
+                str += matrix[i][j] + "   ";
+            }
+            console.log(i + "  " + str);
+        }
+    }
+
+    printMatrix(matrix, m, n);
+
+    /**
+     * Starts the game
+     */
+    function startGame() {
+        showStatistics();
+        console.log("Starting game...");
+        if (whoFirst() === HUMAN) { //human first
+            showTurnDialog("Your");
+            console.log("You first");
+            turn = HUMAN;
+            humanMark = "X";
+            computerMark = "0"
+        } else {
+            console.log("Computer first");
+            showTurnDialog("Computer");
+            turn = COMPUTER;
+            humanMark = "0";
+            computerMark = "X";
+            computerEntry("X");
+        }
+    }
+
+    /**
+     * Shows a the dialog informing whose turn is first
+     */
+    function showTurnDialog(player){
+        var dialog = document.getElementById("turnDialog");
+        dialog.innerHTML = player + " turn first";
+        dialog.showModal();
+        setTimeout(function(){
+            dialog.close();
+        },1000);
+    }
+
+    /**
+     * Shows the statistics for the games played
+     */
+    function showStatistics() {
+        var total = sessionStorage.getItem(KEY_MATCHES_TOTAL);
+        total = total === null ? 0 : total;
+        var won = sessionStorage.getItem(KEY_MATCHES_WON);
+        won = won === null ? 0 : won;
+        var lost = sessionStorage.getItem(KEY_MATCHES_LOST);
+        lost = lost === null ? 0 : lost;
+        var draw = sessionStorage.getItem(KEY_MATCHES_DRAW);
+        draw = draw === null ? 0 : draw;
+        var statistics = "Total Matches = " + total + ", " +
+                "Won = " + won + ", " +
+                "Lost = " + lost + ", " +
+                "Draw = " + draw;
+        document.getElementById("statistics").innerHTML = statistics
+    }
+
+</script>
+</body>
+</html>
