@@ -3,7 +3,31 @@
 <head>
     <title>Tic-Tac-Toe</title>
     <!-- For server draw -->
-    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+    <style>
+        .overlay {
+            position:fixed;
+            top:0;
+            bottom:0;
+            left:0px;
+            right:0;
+            background-color:#000;
+            opacity:0.6;
+            z-index:1001;
+        }
+        .overlay-message{
+            position: fixed;
+            top:200px;
+            left:400px;
+            width:300px;
+            height:100px;
+            background-color:#fff;
+            opacity:1;
+            z-index:1002;
+            text-align: center;
+            padding-top: 30px;
+        }
+    </style>
 </head>
 <body>
 
@@ -14,14 +38,11 @@
     <p id="statistics"/>
 </div>
 
-<dialog id="resultDialog">
-    <p>Hi, I'm a dialog!</p>
+<div class="overlay"></div>
+<div class="overlay-message">
+    <p>CLICK TO CLOSE</p>
     <button id="restart_button" onclick="restartGame()">Restart</button>
-</dialog>
-
-<dialog id="turnDialog">
-
-</dialog>
+</div>
 
 <script>
 
@@ -34,7 +55,7 @@
 
     var COMPUTER = 0;
     var computerMark;
-    var turn;
+    var turn = COMPUTER;
     var HUMAN = 1;
     var humanMark;
     var matrix = createMxNArray(m, n);
@@ -417,7 +438,7 @@
      * Checks the each digonal line of board to see if someone has won or lost or if the game is still in progress
      */
     function checkDiagonal() {
-        var diagonalSlices = new Array();
+        var diagonalSlices = [];
         var str;
         for (var slice = 0; slice < m + n - 1; ++slice) {
             str = "slice " + slice + " : ";
@@ -439,7 +460,7 @@
             console.log(str);
         }
 
-        var antiDiagonalSlices = new Array();
+        var antiDiagonalSlices = [];
         for (var slice = 0; slice < m + n - 1; ++slice) {
             str = "slice " + slice + " : ";
             var sliceItem = new Array();
@@ -460,7 +481,6 @@
             console.log(str + "  Result of diagonal = " + status);
         }
     }
-
 
     /**
      * Checks the diagonal slice to see if someone has won or lost or if the game is still in progress
@@ -511,7 +531,7 @@
      * Restarts the game by clearing board and matrix
      */
     function restartGame() {
-        document.getElementById("resultDialog").close();
+        hideAlert();
         gameOver = false;
         clearMatrix();
         clearBoard();
@@ -538,7 +558,7 @@
      * Evaluates the status of the game
      */
     function evaluateStatus(status, mark) {
-        var dialog = document.getElementById("resultDialog");
+
         switch (status) {
             case STATUS_WON:
                 gameOver = true;
@@ -553,11 +573,12 @@
                     sessionStorage.setItem(KEY_MATCHES_WON, ++lastCount);
                 }
                 if (mark === humanMark) {
-                    dialog.firstElementChild.innerHTML = "Congratulations...You won :) !!! "
+                    showAlert("Congratulations...You won :) !!!", true);
+
                 } else {
-                    dialog.firstElementChild.innerHTML = "You Lost :( !!! "
+                    showAlert("You Lost :( !!! ", true);
                 }
-                dialog.showModal();
+
                 break;
             case STATUS_IN_PROGRESS:
                 console.log("Game continues");
@@ -574,8 +595,7 @@
                     lastCount = sessionStorage.getItem(KEY_MATCHES_DRAW);
                     sessionStorage.setItem(KEY_MATCHES_DRAW, ++lastCount);
                 }
-                dialog.firstElementChild.innerHTML = "Draw !!! "
-                dialog.showModal();
+                showAlert("Draw !!!", true);
                 break;
             case STATUS_LOST:
                 gameOver = true;
@@ -589,8 +609,7 @@
                     lastCount = sessionStorage.getItem(KEY_MATCHES_LOST);
                     sessionStorage.setItem(KEY_MATCHES_LOST, ++lastCount);
                 }
-                dialog.firstElementChild.innerHTML = "You Lost :( !!! "
-                dialog.showModal();
+                showAlert("You Lost :( !!! ", true);
                 break;
         }
     }
@@ -756,11 +775,10 @@
      * Shows a the dialog informing whose turn is first
      */
     function showTurnDialog(player){
-        var dialog = document.getElementById("turnDialog");
-        dialog.innerHTML = player + " turn first";
-        dialog.showModal();
+
+        showAlert(player + " turn first !", false);
         setTimeout(function(){
-            dialog.close();
+            hideAlert();
         },1000);
     }
 
@@ -783,6 +801,30 @@
         document.getElementById("statistics").innerHTML = statistics
     }
 
+    function showAlert(msg, showRefresh){
+        document.getElementsByClassName("overlay-message")[0].hidden = false;
+        document.getElementsByClassName("overlay")[0].hidden = false;
+        document.getElementsByClassName("overlay-message")[0].firstElementChild.innerHTML = msg;
+        if(showRefresh){
+            var button = document.getElementsByClassName("overlay-message")[0].getElementsByTagName("button")[0];
+            button.focus();
+            button.hidden = false;
+        }else{
+            document.getElementsByClassName("overlay-message")[0].
+                    getElementsByTagName("button")[0].hidden = true;;
+        }
+    }
+
+    function hideAlert(){
+        document.getElementsByClassName("overlay-message")[0].hidden = true;
+        document.getElementsByClassName("overlay")[0].hidden = true;
+    }
+
+    function initialiseDialog(){
+        document.getElementsByClassName("overlay-message")[0].onclick = function (){
+            hideAlert();
+        }
+    }
 </script>
 </body>
 </html>
